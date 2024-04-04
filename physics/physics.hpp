@@ -2,12 +2,11 @@
 #include <SFML/Graphics.hpp>
 
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 
 #include <vector>
-#include <array>
 
 #include "../helper/readFile.hpp"
 #include "../helper/STRtree.hpp"
@@ -19,8 +18,8 @@
 // where phi is the degree between the surface and x-axis
 
 // collision detection:
-// course : STR Tree, 
-// precise: || x - (u * x)/(u * u) u || <= r? where x is the position vector and u is the surface vector
+// course : STR Tree, cross product
+// precise: dot product and projection
 
 // orientation of points
 // upper left -> upper right -> lower right -> lower left
@@ -32,8 +31,8 @@ struct Edge {
 
 struct PhysicsSolver{
     std::vector<sf::Vector2f> pos, vel; // positions and velocity of balls
-    struct STRTREE<std::array<std::array<float,2>,2>, 12> surface_tree;
-    std::vector<std::vector<std::vector<int>>> grid; // optimization, essentially a hash map
+    struct STRTREE<struct Edge, 12> surface_tree;
+    // std::vector<std::vector<std::vector<int>>> grid; // optimization, essentially a hash map
     int cell_dim;
     float delta_time; 
 
@@ -49,18 +48,38 @@ struct PhysicsSolver{
         struct Edge *edges = (struct Edge*)std::malloc(num_edges * sizeof(struct Edge));
         int *bbs = (int*)std::malloc(num_edges * 4 * sizeof(int)); // 4 int for the bounding box
 
-        for(int i = 0; i < in.num_surface; i++){
-            for(int j = 0; j < in.surf[i][0]; j++){
+        for(int i = 0, e_count = 0; i < in.num_surface; i++){
+            for(int j = 0; j < in.surf[i][0]; j++, e_count++){
                 int p1x = ((int (*)[2])(in.surf[i] + 1))[j][0];
                 int p1y = ((int (*)[2])(in.surf[i] + 1))[j][1];
                 int p2x = ((int (*)[2])(in.surf[i] + 1))[(j + 1) % in.surf[i][0]][0];
                 int p2y = ((int (*)[2])(in.surf[i] + 1))[(j + 1) % in.surf[i][0]][1];
+                int bb[2][2], points[2][2] = {{p1x,p1y},{p2x,p2y}};
+                get_bounding_box(points,bb);
+                if(p1x >= p2x){
+                    // swap p1, p2 to comform to the definition of points in Edge
+                    int tmp;
+                    tmp = p1x;
+                    p1x = p2x;
+                    p2x = tmp;
+
+                    tmp = p1y;
+                    p1y = p2y;
+                    p2y = tmp;
+                }
                 float phi = atan2(p2y - p1y, p2x - p1x);
                 float sin2 = std::sin(2 * phi);
                 float cos2 = std::cos(2 * phi);
-                struct Edge e = {{p1x,p1y}, {p2x,p2y},{{cos2, sin2},{sin2, -1 * cos2}}};
+                // setting values
+                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
+                std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(int));
             }
         }
+        int window_up[2][2] = {{0,0},{in.width,0}}, window_left[2] = {{0,0},{0, in.height}}, window_down[2][2] = {{0, in.height}, {in.width, in.height}}, window_right[2][2] = {{in.width,0},{in.width, in.height}};
+        std::memcpy(bbs + num_edges - 4, window_up, 4 * sizeof(int));
+        std::memcpy(bbs + num_edges - 3, window_left, 4 * sizeof(int));
+        std::memcpy(bbs + num_edges - 2, window_down, 4 * sizeof(int));
+        std::memcpy(bbs + num_edges - 1, window_right, 4* sizeof(int));
 
         this->surface_tree = STRTREE(bbs, edges, num_edges);
 
@@ -73,48 +92,72 @@ struct PhysicsSolver{
         std::free(edges);
     }
 
+    // give the bounding box of any two points
+    void get_bounding_box(int points[2][2], int bb[2][2]){
+        if(points[0][0] < points[1][0]){
+            bb[0][0] = points[0][0];
+            bb[1][0] = points[1][0];
+        }
+        else{
+            bb[0][0] = points[0][0];
+            bb[1][0] = points[1][0];
+        }
+        if(points[0][1] < points[1][1]){
+            bb[0][1] = points[0][1];
+            bb[1][1] = points[1][1];
+        }
+        else{
+            bb[0][1] = points[1][1];
+            bb[1][1] = points[0][1];
+        }
+    }
+
+    // calculate shortest squared distance from C to AB and find the intersection, and return whether the scalar is in [0,1]
+    float point_line_dist(int A[2], int B[2], int C[2], float intersection[2], float *dist){
+        int CA[2] = {C[0] - A[0], C[1] - A[1]}, AB = {B[0] - A[0], B[1] - A[1]};
+        float scalar = ((float)(CA[0] * AB[0] + CA[1] * AB[1])) / (AB[0] * AB[0] + AB[1] * AB[1]);
+        intersection[0] = AB[0] * scalar;
+        intersection[1] = AB[1] * scalar;
+        float p[2] = {C[0] - intersection[0], C[1] - intersection[1]};
+        *dist = p[0] * p[0] + p[1] * p[1];
+        return scalar >= 0 && scalar <= 1;
+    }
+
+    // calculate the distance between 2 points
+    int point_point_distance(int p1[2], int p2[2]){
+        int xdiff = p1[0] - p2[0], ydiff = p1[1] - p2[1];
+        return xdiff * xdiff + ydiff * ydiff;
+    }
+
     void posUpdate(sf::Vector2f accel, float collision_damping){
+        sf::Vector2f tmp;
         for(unsigned int i = 0; i < this->pos.size(); i++){
+            std::vector<struct Branch<struct Edge> *> *query_res;
+            int q[2][2];
+            
+            // update velocity
             this->vel[i] += accel * this->delta_time;
-            this->pos[i] += this->vel[i] * this->delta_time;
-            int px = this->pos[i].x / this->cell_dim, py = this->pos[i].y / this->cell_dim, px_p = px + 1, py_p = py + 1;
-            px = (px)? px - 1: px;
-            py = (py)? py - 1: py;
-            float min_dist = (unsigned int)-1, **matrix;
-            for(int i = px; i < px_p + 1; i++){
-                for(int j = py; j < py_p + 1; j++){
-                    if(!this->surfaces[j + 1][i + 1].size()){continue;}
+            
+            // preparing query
+            sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time;
+            int points[2][2] = {{old_pos.x, old_pos.y}, {new_pos.x,new_pos.y}}, bb[2][2];
+            get_bounding_box(points, bb);
 
-                    // for(auto e : this->surfaces[j + 1][i + 1]){
-                    //     float u[2] = {e.p2[0] - e.p1[0], e.p2[1] - e.p1[1]};
-                    //     float x[2] = {this->pos[i].x, this->pos[i].y};
-                    //     float ux = u[0] * x[0] + u[1] * x[1];
-                    //     int uu = u[0] * u[0] + u[1] * u[1];
-                    //     float scaler = ((float)ux) / uu;
-                    //     float dist[2] = {x[0] - scaler * u[0], x[1] - scaler * u[1]};
-                    //     float distance = dist[0] * dist[0] + dist[1] * dist[1];
-                    //     if(distance < min_dist && distance <= (this->cell_dim * this->cell_dim / 4)){
-                    //         min_dist = distance;
-                    //         matrix = (float **)e.mat;
-                    //     }
-                    // }
+            // get query result
+            query_res = this->surface_tree.query(bb);
 
-                    for(auto e : this->surfaces[j + 1][i + 1]){
-                        float u[2] = {(e.p2[0] + e.p1[0]) / 2, (e.p2[1] + e.p1[1]) / 2};
-                        float x[2] = {this->pos[i].x, this->pos[i].y};
-                        float dist[2] = {x[0] - u[0], x[1] - u[1]};
-                        float distance = dist[0] * dist[0] + dist[1] * dist[1];
-                        if(distance < min_dist && distance <= (this->cell_dim * this->cell_dim / 4)){
-                            min_dist = distance;
-                            matrix = (float **)e.mat;
-                        }
-                    }
-                }
-            } 
+            struct Edge e;
+            for(auto b : *query_res){
+                e = b->data;
+                ;
+            }
+            
             if(min_dist == (unsigned int)-1){continue;}
             float vx = this->vel[i].x, vy = this->vel[i].y;
             this->vel[i].x = collision_damping * (vx * ((float (*)[2])matrix)[0][0] + vy * ((float (*)[2])matrix)[0][1]);
             this->vel[i].y = collision_damping * (vx * ((float (*)[2])matrix)[1][0] + vy * ((float (*)[2])matrix)[1][1]);
+            
+            delete query_res;
         }
     }
 
