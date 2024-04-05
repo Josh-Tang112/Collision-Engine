@@ -12,9 +12,9 @@
 #include "../helper/STRtree.hpp"
 
 // bounce off matrix:
-// = exp(i(phi)) o vertical reflection o exp(i(-phi))
-// = [cos(2 * phi) sin(2 * phi)]
-//   [sin(2 * phi) -cos(2 * phi)]
+// = exp(i(-phi)) o reflect over x-axis o exp(i(phi))
+// = [cos(2 * phi) -sin(2 * phi)]
+//   [-sin(2 * phi) -cos(2 * phi)]
 // where phi is the degree between the surface and x-axis
 
 // collision detection:
@@ -71,15 +71,20 @@ struct PhysicsSolver{
                 float sin2 = std::sin(2 * phi);
                 float cos2 = std::cos(2 * phi);
                 // setting values
-                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
+                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, -1 * sin2},{-1 * sin2, -1 * cos2}}};
                 std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(int));
             }
         }
+        // adding the 4 edges of the window to the data structures appropriately
         int window_up[2][2] = {{0,0},{in.width,0}}, window_left[2] = {{0,0},{0, in.height}}, window_down[2][2] = {{0, in.height}, {in.width, in.height}}, window_right[2][2] = {{in.width,0},{in.width, in.height}};
         std::memcpy(bbs + num_edges - 4, window_up, 4 * sizeof(int));
+        edges[num_edges - 4] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
         std::memcpy(bbs + num_edges - 3, window_left, 4 * sizeof(int));
+        edges[num_edges - 3] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
         std::memcpy(bbs + num_edges - 2, window_down, 4 * sizeof(int));
+        edges[num_edges - 2] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
         std::memcpy(bbs + num_edges - 1, window_right, 4* sizeof(int));
+        edges[num_edges - 1] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
 
         this->surface_tree = STRTREE(bbs, edges, num_edges);
 
@@ -112,21 +117,42 @@ struct PhysicsSolver{
         }
     }
 
-    // calculate shortest squared distance from C to AB and find the intersection, and return whether the scalar is in [0,1]
-    float point_line_dist(int A[2], int B[2], int C[2], float intersection[2], float *dist){
-        int CA[2] = {C[0] - A[0], C[1] - A[1]}, AB = {B[0] - A[0], B[1] - A[1]};
-        float scalar = ((float)(CA[0] * AB[0] + CA[1] * AB[1])) / (AB[0] * AB[0] + AB[1] * AB[1]);
-        intersection[0] = AB[0] * scalar;
-        intersection[1] = AB[1] * scalar;
-        float p[2] = {C[0] - intersection[0], C[1] - intersection[1]};
-        *dist = p[0] * p[0] + p[1] * p[1];
-        return scalar >= 0 && scalar <= 1;
-    }
-
     // calculate the distance between 2 points
     int point_point_distance(int p1[2], int p2[2]){
         int xdiff = p1[0] - p2[0], ydiff = p1[1] - p2[1];
         return xdiff * xdiff + ydiff * ydiff;
+    }
+
+    // calculate shortest squared distance from C to AB and find the closest point
+    float point_line_dist(int A[2], int B[2], int C[2], float closest[2]){
+        int CA[2] = {C[0] - A[0], C[1] - A[1]}, AB = {B[0] - A[0], B[1] - A[1]};
+        float scalar = ((float)(CA[0] * AB[0] + CA[1] * AB[1])) / (AB[0] * AB[0] + AB[1] * AB[1]);
+        if(scalar > 0 && scalar < 1){
+            closest[0] = AB[0] * scalar;
+            closest[1] = AB[1] * scalar;
+            float p[2] = {C[0] - closest[0], C[1] - closest[1]};
+            return p[0] * p[0] + p[1] * p[1];
+        }
+        else if(scalar <= 0){
+            std::memcpy(closest,A,2 * sizeof(int));
+            float p[2] = {C[0] - A[0], C[1] - A[1]};
+        }
+    }
+
+    // whether AB intersect CD is equivalent to whether ACBD is a convex shape 
+    // which can be tested by testing whether (CD X CA) and (CD X CB), (AB X AC) and (AB X AD) has different signs
+    // to account for AB intersecting at C or D, cross product being zero will be counted as intersecting
+    // we only need to compute the k component, which is just a determinant
+    bool intersect(int A[2], int B[2], int C[2], int D[2]){
+        int CD[2] = {D[0] - C[0], D[1] - C[1]}, CA[2] = {A[0] - C[0], A[1] - C[1]}, CB[2] = {B[0] - C[0], B[1] - C[1]};
+        int CDXCA = CD[0] * CA[1] - CD[1] * CA[0], CDXCB = CD[0] * CB[1] - CD[1] * CB[0];
+        if(CDXCA * CDXCB > 0){return false;}
+        else if(CDXCA * CDXCB == 0){return true;}
+
+        int AB[2] = {B[0] - A[0], B[1] - A[1]}, AC[2] = {C[0] - A[0], C[1] - A[1]}, AD[2] = {D[0] - A[0], D[1] - A[1]};
+        int ABXAC = AB[0] * AC[1] - AB[1] * AC[0], ABXAD = AB[0] * AD[1] - AB[1] * AD[0];
+        if(ABXAC * ABXAD > 0){return false;}
+        else{return true;}
     }
 
     void posUpdate(sf::Vector2f accel, float collision_damping){
