@@ -12,9 +12,9 @@
 #include "../helper/STRtree.hpp"
 
 // bounce off matrix:
-// = exp(i(-phi)) o reflect over x-axis o exp(i(phi))
-// = [cos(2 * phi) -sin(2 * phi)]
-//   [-sin(2 * phi) -cos(2 * phi)]
+// = exp(i(phi)) o reflect over x-axis o exp(i(-phi))
+// = [cos(2 * phi) sin(2 * phi)]
+//   [sin(2 * phi) -cos(2 * phi)]
 // where phi is the degree between the surface and x-axis
 
 // collision detection:
@@ -71,7 +71,7 @@ struct PhysicsSolver{
                 float sin2 = std::sin(2 * phi);
                 float cos2 = std::cos(2 * phi);
                 // setting values
-                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, -1 * sin2},{-1 * sin2, -1 * cos2}}};
+                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
                 std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(int));
             }
         }
