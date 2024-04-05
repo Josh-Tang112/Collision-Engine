@@ -130,13 +130,15 @@ struct PhysicsSolver{
         if(scalar > 0 && scalar < 1){
             closest[0] = AB[0] * scalar;
             closest[1] = AB[1] * scalar;
-            float p[2] = {C[0] - closest[0], C[1] - closest[1]};
-            return p[0] * p[0] + p[1] * p[1];
         }
         else if(scalar <= 0){
             std::memcpy(closest,A,2 * sizeof(int));
-            float p[2] = {C[0] - A[0], C[1] - A[1]};
         }
+        else {
+            std::memcpy(closest,B,2 * sizeof(int));
+        }
+        float p[2] = {C[0] - closest[0], C[1] - closest[1]};
+        return p[0] * p[0] + p[1] * p[1];
     }
 
     // whether AB intersect CD is equivalent to whether ACBD is a convex shape 
@@ -175,7 +177,9 @@ struct PhysicsSolver{
             struct Edge e;
             for(auto b : *query_res){
                 e = b->data;
-                ;
+                if(intersect(points[0], points[1], e.points[0], e.points[1])){
+
+                }
             }
             
             if(min_dist == (unsigned int)-1){continue;}
