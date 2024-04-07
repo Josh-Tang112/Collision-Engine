@@ -76,6 +76,10 @@ template <typename T, int N>
 struct STRTREE {
     struct Node<T> *root;
 
+    STRTREE(){
+        this->root = NULL;
+    }
+
     // rect is an array of bounding boxes
     STRTREE(int ***rect, T *data, size_t num){
         struct Branch<T> **bbs = (struct Branch<T> **)std::malloc(num * sizeof(struct Branch<T>*));
