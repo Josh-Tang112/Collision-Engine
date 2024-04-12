@@ -25,7 +25,7 @@
 // upper left -> upper right -> lower right -> lower left
 
 struct Edge {
-    int points[2][2]; // [0] - left point, [1] - right point
+    int points[2][2]; 
     float mat[2][2]; // bounce matrix
 };
 
@@ -33,11 +33,11 @@ struct PhysicsSolver{
     std::vector<sf::Vector2f> pos, vel; // positions and velocity of balls
     struct STRTREE<struct Edge, 12> surface_tree;
     // std::vector<std::vector<std::vector<int>>> grid; // optimization, essentially a hash map
-    int cell_dim;
+    int r;
     float delta_time; 
 
     PhysicsSolver(struct FileReader in, int r, float delta_time) : 
-        delta_time{delta_time}, cell_dim{2 * r} {
+        delta_time{delta_time}, r{r} {
         // calculate the dim of surface
         int num_edges = 0;
         for(int i = 0; i < in.num_surface; i++){
@@ -56,38 +56,28 @@ struct PhysicsSolver{
                 int p2y = ((int (*)[2])(in.surf[i] + 1))[(j + 1) % in.surf[i][0]][1];
                 int bb[2][2], points[2][2] = {{p1x,p1y},{p2x,p2y}};
                 get_bounding_box(points,bb);
-                if(p1x >= p2x){
-                    // swap p1, p2 to comform to the definition of points in Edge
-                    int tmp;
-                    tmp = p1x;
-                    p1x = p2x;
-                    p2x = tmp;
-
-                    tmp = p1y;
-                    p1y = p2y;
-                    p2y = tmp;
-                }
                 float phi = atan2(p2y - p1y, p2x - p1x);
                 float sin2 = std::sin(2 * phi);
                 float cos2 = std::cos(2 * phi);
                 // setting values
-                edges[e_count] = {{{p1x,p1y}, {p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
+                edges[e_count] = {{{p1x,p1y},{p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
                 std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(int));
             }
         }
         // adding the 4 edges of the window to the data structures appropriately
         int window_up[2][2] = {{0,0},{in.width,0}}, window_left[2][2] = {{0,0},{0, in.height}};
         int window_down[2][2] = {{0, in.height}, {in.width, in.height}}, window_right[2][2] = {{in.width,0},{in.width, in.height}};
-        std::memcpy(bbs + num_edges - 4, window_up, 4 * sizeof(int));
+        std::memcpy(bbs + (num_edges - 4) * 4, window_up, 4 * sizeof(int));
         edges[num_edges - 4] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
-        std::memcpy(bbs + num_edges - 3, window_left, 4 * sizeof(int));
+        std::memcpy(bbs + (num_edges - 3) * 4, window_left, 4 * sizeof(int));
         edges[num_edges - 3] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
-        std::memcpy(bbs + num_edges - 2, window_down, 4 * sizeof(int));
+        std::memcpy(bbs + (num_edges - 2) * 4, window_down, 4 * sizeof(int));
         edges[num_edges - 2] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
-        std::memcpy(bbs + num_edges - 1, window_right, 4* sizeof(int));
+        std::memcpy(bbs + (num_edges - 1) * 4, window_right, 4* sizeof(int));
         edges[num_edges - 1] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
 
-        this->surface_tree = STRTREE<struct Edge, 12>((int***)bbs, edges, num_edges);
+        struct STRTREE<struct Edge, 12> tmp_tree((int***)bbs, edges, num_edges);
+        this->surface_tree.root = tmp_tree.root;
 
         for(int i = 0; i < in.num_ball; i ++){
             this->pos.push_back(sf::Vector2f(((int (*)[2])in.pos)[i][0],((int (*)[2])in.pos)[i][1]));
@@ -105,8 +95,8 @@ struct PhysicsSolver{
             bb[1][0] = points[1][0];
         }
         else{
-            bb[0][0] = points[0][0];
-            bb[1][0] = points[1][0];
+            bb[0][0] = points[1][0];
+            bb[1][0] = points[0][0];
         }
         if(points[0][1] < points[1][1]){
             bb[0][1] = points[0][1];
@@ -174,7 +164,6 @@ struct PhysicsSolver{
     }
 
     void posUpdate(sf::Vector2f accel, float collision_damping){
-        int r = this->cell_dim / 2;
         for(unsigned int i = 0; i < this->pos.size(); i++){
             std::vector<struct Branch<struct Edge> *> *query_res;
             int q[2][2], bb[2][2];
@@ -184,7 +173,7 @@ struct PhysicsSolver{
 
             // calculate a vector parallel to the velocity vector with size r
             float vel_size = std::sqrt(this->vel[i].x * this->vel[i].x + this->vel[i].y * this->vel[i].y); 
-            float direction[2] = {this->vel[i].x * r / vel_size, this->vel[i].y * r / vel_size};
+            float direction[2] = {this->vel[i].x * this->r / vel_size, this->vel[i].y * this->r / vel_size};
             
             // preparing query
             sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time;
@@ -196,6 +185,7 @@ struct PhysicsSolver{
 
             struct Edge e;
             float intersect[2];
+            this->pos[i] += this->vel[i] * this->delta_time;
             for(auto b : *query_res){
                 e = b->data;
                 if(intersection(points[0], points[1], (float*)e.points[0], (float*)e.points[1], intersect)){
@@ -204,9 +194,6 @@ struct PhysicsSolver{
                     this->vel[i].x = collision_damping * (vx * e.mat[0][0] + vy * e.mat[0][1]);
                     this->vel[i].y = collision_damping * (vx * e.mat[1][0] + vy * e.mat[1][1]);
                     break;
-                }
-                else{
-                    this->pos[i] = sf::Vector2f(new_pos);
                 }
             }
             
