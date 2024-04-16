@@ -32,27 +32,27 @@ struct Node {
 
 template <typename T>
 struct Branch {
-    int rect[2][2]; // [0] - lower left point, [1] - upper right point
+    float rect[2][2]; // [0] - lower left point, [1] - upper right point
     struct Node<T> *children; // a ptr to an internal node, NULL when leaf
     T data;
 
     Branch(){}
 
-    Branch(int rect[2][2]){
-        std::memcpy(this->rect,rect,4 * sizeof(int));
+    Branch(float rect[2][2]){
+        std::memcpy(this->rect,rect,4 * sizeof(float));
     }
 
     Branch<T>(Branch<T> &b){
-        std::memcpy(this->rect,b.rect,4 * sizeof(int));
+        std::memcpy(this->rect,b.rect,4 * sizeof(float));
         this->data = b.data;
         this->children = b.children;
     }
 
     void set_rect(){
-        int tmp[2][2];
+        float tmp[2][2];
         assert(this->children != NULL);
         struct Node<T> *nptr = this->children;
-        std::memcpy(tmp,nptr->children[0]->rect, 4 * sizeof(int));
+        std::memcpy(tmp,nptr->children[0]->rect, 4 * sizeof(float));
         for(int i = 1; i < nptr->count; i++){
             if(nptr->children[i]->rect[0][0] < tmp[0][0])
                 tmp[0][0] = nptr->children[i]->rect[0][0];
@@ -63,14 +63,9 @@ struct Branch {
             if(nptr->children[i]->rect[1][1] > tmp[1][1])
                 tmp[1][1] = nptr->children[i]->rect[1][1];
         }
-        std::memcpy(this->rect, tmp, 4 * sizeof(int));
+        std::memcpy(this->rect, tmp, 4 * sizeof(float));
     }
 };
-
-template<typename T, int i>
-bool comp(struct Branch<T> *a, struct Branch<T> *b){
-    return (a->rect[0][i] + a->rect[1][i]) / 2 < (b->rect[0][i] + b->rect[1][i]) / 2;
-}
 
 template <typename T, int N>
 struct STRTREE {
@@ -81,11 +76,11 @@ struct STRTREE {
     }
 
     // rect is an array of bounding boxes
-    STRTREE(int ***rect, T *data, size_t num){
+    STRTREE(float ***rect, T *data, size_t num){
         struct Branch<T> **bbs = (struct Branch<T> **)std::malloc(num * sizeof(struct Branch<T>*));
         void *byte_offset = (void*)(&((struct Branch<T> *)NULL)->data);
         for(int i = 0; i < num; i++){
-            struct Branch<T> *tmp = new struct Branch<T>(((int (*)[2][2])rect)[i]);
+            struct Branch<T> *tmp = new struct Branch<T>(((float (*)[2][2])rect)[i]);
             char *for_cpy = (char*)tmp;
             for_cpy += (unsigned long)byte_offset;
             std::memcpy(for_cpy, data + i, sizeof(T));
@@ -96,12 +91,13 @@ struct STRTREE {
         int S = std::ceil(std::sqrt(num / ((float)N))); // ceil(sqrt(num_rectangles / num_data_in_leaf)) vertical slices, >= 2 as long as num > N
         int nwindow = std::ceil(num / ((float) S * N)); // number of times the window has to shift
 
-        std::stable_sort(bbs, bbs + num, comp<T,0>); //sort by x
-        for(int i = 1; i <=  nwindow; i++){
+        std::stable_sort(bbs, bbs + num, comp<0>); //sort by x
+
+        for(int i = 1; i <= nwindow; i++){
             // math tells us each tile has S * N elements, but ceil will mess it up
             // so we sort using windows of size S * N
             int upper = (S * N * i < num)? S * N * i : num, lower = S * N * (i - 1);
-            std::stable_sort(bbs + lower, bbs + upper, comp<T,1>); // sort by y for each tile
+            std::stable_sort(bbs + lower, bbs + upper, comp<1>); // sort by y for each tile
         }
 
         int num_nodes_in_this_level = std::ceil(num / (float)N), current_num_node = 0, num_branch, branch_count = 0, num_in_leaf = 0;
@@ -132,10 +128,10 @@ struct STRTREE {
             num = num_nodes_in_this_level;
             S = std::ceil(std::sqrt(num / ((float)N))); // repeat the process
             nwindow = std::ceil(num / ((float) S * N));
-            std::stable_sort(bbs, bbs + num, comp<T,0>); // sort by x
+            std::stable_sort(bbs, bbs + num, comp<0>); // sort by x
             for(int i = 1; i <= nwindow; i++){
                 int upper = (S * N * i < num)? S * N * i : num, lower = S * N * (i - 1);
-                std::stable_sort(bbs + lower, bbs + upper, comp<T,1>); // sort by y for each tile
+                std::stable_sort(bbs + lower, bbs + upper, comp<1>); // sort by y for each tile
             }
             // set appropriate var
             num_nodes_in_this_level = std::ceil(num / (float)N);
@@ -154,13 +150,18 @@ struct STRTREE {
         std::free(bbs);
     }
 
+    template<int i>
+    static bool comp(struct Branch<T> *a, struct Branch<T> *b){
+        return (a->rect[0][i] + a->rect[1][i]) / 2 < (b->rect[0][i] + b->rect[1][i]) / 2;
+    }
+
     void print_bb(int c, struct Node<T> *nptr){
         for(int i = 0; i < nptr->count; i++){
             struct Branch<T> *tmp = nptr->children[i];
             for(int i = 0; i < c; i++){
                 printf("  ");
             }
-            printf("%d, %d | %d, %d\n",tmp->rect[0][0], tmp->rect[0][1], tmp->rect[1][0], tmp->rect[1][1]);
+            printf("%.4f, %.4f | %.4f, %.4f\n",tmp->rect[0][0], tmp->rect[0][1], tmp->rect[1][0], tmp->rect[1][1]);
             if(nptr->children[i]->children)
                 print_bb(c + 1, nptr->children[i]->children);
         }
@@ -191,11 +192,11 @@ struct STRTREE {
         return res;
     }
 
-    bool intersect(int bb1[2][2], int bb2[2][2]) {
+    bool intersect(float bb1[2][2], float bb2[2][2]) {
         return bb1[0][0] < bb2[1][0] && bb1[1][0] > bb2[0][0] && bb1[0][1] < bb2[1][1] && bb1[1][1] > bb2[0][1];
     }
 
-    std::vector<struct Branch<T> *>* query(int q[2][2]){
+    std::vector<struct Branch<T> *>* query(float q[2][2]){
         std::vector<struct Branch<T> *> *res = new std::vector<struct Branch<T> *>;
         std::vector<struct Node<T> *> stack;
         stack.push_back(this->root);

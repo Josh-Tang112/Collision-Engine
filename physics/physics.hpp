@@ -25,7 +25,7 @@
 // upper left -> upper right -> lower right -> lower left
 
 struct Edge {
-    int points[2][2]; 
+    float points[2][2]; 
     float mat[2][2]; // bounce matrix
 };
 
@@ -46,42 +46,50 @@ struct PhysicsSolver{
         num_edges += 4; // for the 4 edges of the window
 
         struct Edge *edges = (struct Edge*)std::malloc(num_edges * sizeof(struct Edge));
-        int *bbs = (int*)std::malloc(num_edges * 4 * sizeof(int)); // 4 int for the bounding box
+        float *bbs = (float*)std::malloc(num_edges * 4 * sizeof(float)); // 4 int for the bounding box
+
+        printf("%d\n",in.num_surface);
+        printf("%d\n",in.num_points_per_surface[0]);
+        for(int i = 0; i < 6; i++)
+            printf("%f ",in.surf[0][i]);
+        printf("\n");
 
         for(int i = 0, e_count = 0; i < in.num_surface; i++){
-            for(int j = 0; j < in.surf[i][0]; j++, e_count++){
-                int p1x = ((int (*)[2])(in.surf[i] + 1))[j][0];
-                int p1y = ((int (*)[2])(in.surf[i] + 1))[j][1];
-                int p2x = ((int (*)[2])(in.surf[i] + 1))[(j + 1) % in.surf[i][0]][0];
-                int p2y = ((int (*)[2])(in.surf[i] + 1))[(j + 1) % in.surf[i][0]][1];
-                int bb[2][2], points[2][2] = {{p1x,p1y},{p2x,p2y}};
+            for(int j = 0; j < in.num_points_per_surface[i]; j++, e_count++){
+                float p1x = ((float (*)[2])(in.surf[i]))[j][0];
+                float p1y = ((float (*)[2])(in.surf[i]))[j][1];
+                float p2x = ((float (*)[2])(in.surf[i]))[(j + 1) % in.num_points_per_surface[i]][0];
+                float p2y = ((float (*)[2])(in.surf[i]))[(j + 1) % in.num_points_per_surface[i]][1];
+                printf("%f %f, %f %f\n",p1x,p1y,p2x,p2y);
+                float bb[2][2], points[2][2] = {{p1x,p1y},{p2x,p2y}};
                 get_bounding_box(points,bb);
                 float phi = atan2(p2y - p1y, p2x - p1x);
                 float sin2 = std::sin(2 * phi);
                 float cos2 = std::cos(2 * phi);
                 // setting values
                 edges[e_count] = {{{p1x,p1y},{p2x,p2y}},{{cos2, sin2},{sin2, -1 * cos2}}};
-                std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(int));
+                std::memcpy(bbs + e_count * 4, bb, 4 * sizeof(float));
             }
         }
         // adding the 4 edges of the window to the data structures appropriately
-        int window_up[2][2] = {{0,0},{in.width,0}}, window_left[2][2] = {{0,0},{0, in.height}};
-        int window_down[2][2] = {{0, in.height}, {in.width, in.height}}, window_right[2][2] = {{in.width,0},{in.width, in.height}};
-        std::memcpy(bbs + (num_edges - 4) * 4, window_up, 4 * sizeof(int));
-        edges[num_edges - 4] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
-        std::memcpy(bbs + (num_edges - 3) * 4, window_left, 4 * sizeof(int));
-        edges[num_edges - 3] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
-        std::memcpy(bbs + (num_edges - 2) * 4, window_down, 4 * sizeof(int));
-        edges[num_edges - 2] = {{{0,0},{in.width,0}}, {{1, 0},{0,-1}}};
-        std::memcpy(bbs + (num_edges - 1) * 4, window_right, 4* sizeof(int));
-        edges[num_edges - 1] = {{{0,0},{in.width,0}}, {{-1, 0},{0,1}}};
+        float window_up[2][2] = {{0,0},{(float)in.width,0}}, window_left[2][2] = {{0,0},{0, (float)in.height}};
+        float window_down[2][2] = {{0, (float)in.height}, {(float)in.width, (float)in.height}};
+        float window_right[2][2] = {{(float)in.width,0},{(float)in.width, (float)in.height}};
+        std::memcpy(bbs + (num_edges - 4) * 4, window_up, 4 * sizeof(float));
+        edges[num_edges - 4] = {{{0,0},{(float)in.width,0}}, {{1, 0},{0,-1}}};
+        std::memcpy(bbs + (num_edges - 3) * 4, window_left, 4 * sizeof(float));
+        edges[num_edges - 3] = {{{0,0},{0, (float)in.height}}, {{-1, 0},{0,1}}};
+        std::memcpy(bbs + (num_edges - 2) * 4, window_down, 4 * sizeof(float));
+        edges[num_edges - 2] = {{{0, (float)in.height}, {(float)in.width, (float)in.height}}, {{1, 0},{0,-1}}};
+        std::memcpy(bbs + (num_edges - 1) * 4, window_right, 4* sizeof(float));
+        edges[num_edges - 1] = {{{(float)in.width,0},{(float)in.width, (float)in.height}}, {{-1, 0},{0,1}}};
 
-        struct STRTREE<struct Edge, 12> tmp_tree((int***)bbs, edges, num_edges);
+        struct STRTREE<struct Edge, 12> tmp_tree((float***)bbs, edges, num_edges);
         this->surface_tree.root = tmp_tree.root;
 
         for(int i = 0; i < in.num_ball; i ++){
-            this->pos.push_back(sf::Vector2f(((int (*)[2])in.pos)[i][0],((int (*)[2])in.pos)[i][1]));
-            this->vel.push_back(sf::Vector2f(((int (*)[2])in.vel)[i][0],((int (*)[2])in.vel)[i][1]));
+            this->pos.push_back(sf::Vector2f(((float (*)[2])in.pos)[i][0],((float (*)[2])in.pos)[i][1]));
+            this->vel.push_back(sf::Vector2f(((float (*)[2])in.vel)[i][0],((float (*)[2])in.vel)[i][1]));
         }
 
         std::free(bbs);
@@ -89,7 +97,7 @@ struct PhysicsSolver{
     }
 
     // give the bounding box of any two points
-    void get_bounding_box(int points[2][2], int bb[2][2]){
+    void get_bounding_box(float points[2][2], float bb[2][2]){
         if(points[0][0] < points[1][0]){
             bb[0][0] = points[0][0];
             bb[1][0] = points[1][0];
@@ -166,7 +174,6 @@ struct PhysicsSolver{
     void posUpdate(sf::Vector2f accel, float collision_damping){
         for(unsigned int i = 0; i < this->pos.size(); i++){
             std::vector<struct Branch<struct Edge> *> *query_res;
-            int q[2][2], bb[2][2];
             
             // update velocity
             this->vel[i] += accel * this->delta_time;
@@ -178,7 +185,8 @@ struct PhysicsSolver{
             // preparing query
             sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time;
             float points[2][2] = {{old_pos.x, old_pos.y}, {new_pos.x,new_pos.y}};
-            get_bounding_box((int (*)[2])points, bb);
+            float bb[2][2];
+            get_bounding_box(points, bb);
 
             // get query result
             query_res = this->surface_tree.query(bb);
