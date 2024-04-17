@@ -11,6 +11,8 @@ int main(int argc, char *argv[])
     struct FileReader in(argv[1]);
     struct PhysicsSolver sol(in, 10, 1./40);
 
+    sol.surface_tree.print_tree();
+
     in.Free();
     sol.destroy();
 

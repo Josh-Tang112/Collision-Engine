@@ -41,18 +41,12 @@ struct PhysicsSolver{
         // calculate the dim of surface
         int num_edges = 0;
         for(int i = 0; i < in.num_surface; i++){
-            num_edges += in.surf[i][0];
+            num_edges += in.num_points_per_surface[i];
         }
         num_edges += 4; // for the 4 edges of the window
 
         struct Edge *edges = (struct Edge*)std::malloc(num_edges * sizeof(struct Edge));
         float *bbs = (float*)std::malloc(num_edges * 4 * sizeof(float)); // 4 int for the bounding box
-
-        printf("%d\n",in.num_surface);
-        printf("%d\n",in.num_points_per_surface[0]);
-        for(int i = 0; i < 6; i++)
-            printf("%f ",in.surf[0][i]);
-        printf("\n");
 
         for(int i = 0, e_count = 0; i < in.num_surface; i++){
             for(int j = 0; j < in.num_points_per_surface[i]; j++, e_count++){
@@ -60,7 +54,6 @@ struct PhysicsSolver{
                 float p1y = ((float (*)[2])(in.surf[i]))[j][1];
                 float p2x = ((float (*)[2])(in.surf[i]))[(j + 1) % in.num_points_per_surface[i]][0];
                 float p2y = ((float (*)[2])(in.surf[i]))[(j + 1) % in.num_points_per_surface[i]][1];
-                printf("%f %f, %f %f\n",p1x,p1y,p2x,p2y);
                 float bb[2][2], points[2][2] = {{p1x,p1y},{p2x,p2y}};
                 get_bounding_box(points,bb);
                 float phi = atan2(p2y - p1y, p2x - p1x);
@@ -185,6 +178,7 @@ struct PhysicsSolver{
             // preparing query
             sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time;
             float points[2][2] = {{old_pos.x, old_pos.y}, {new_pos.x,new_pos.y}};
+
             float bb[2][2];
             get_bounding_box(points, bb);
 

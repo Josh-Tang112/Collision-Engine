@@ -26,10 +26,10 @@ int main(int argc, char *argv[])
     }
     sf::ConvexShape shape_lst[in.num_surface];
     for(int i = 0; i < in.num_surface; i++){
-        shape_lst[i] = sf::ConvexShape(in.surf[i][0]);
+        shape_lst[i] = sf::ConvexShape(in.num_points_per_surface[i]);
         shape_lst[i].setFillColor(sf::Color::White);
-        for(int j = 0; j < in.surf[i][0]; j++){
-            shape_lst[i].setPoint(j,sf::Vector2f(((int (*)[2])(in.surf[i] + 1))[j][0], ((int (*)[2])(in.surf[i] + 1))[j][1]));
+        for(int j = 0; j < in.num_points_per_surface[i]; j++){
+            shape_lst[i].setPoint(j,sf::Vector2f(((float (*)[2])(in.surf[i]))[j][0], ((float (*)[2])(in.surf[i]))[j][1]));
         }
     }
 
