@@ -31,6 +31,8 @@ struct Edge {
 
 struct PhysicsSolver{
     std::vector<sf::Vector2f> pos, vel; // positions and velocity of balls
+    // it's possible to further optimize query by checking whether each pair of edges intersect or not, ideally they shouldn't
+    // if they do, we keep the longer edge
     struct STRTREE<struct Edge, 12> surface_tree;
     // std::vector<std::vector<std::vector<int>>> grid; // optimization, essentially a hash map
     int r;
@@ -164,7 +166,9 @@ struct PhysicsSolver{
         return (s >= 0 && s <= 1) && (t >= 0 && t <= 1);
     }
 
-    void posUpdate(sf::Vector2f accel, float collision_damping){
+    bool posUpdate(sf::Vector2f accel, float collision_damping){
+        bool changed = false;
+
         for(unsigned int i = 0; i < this->pos.size(); i++){
             std::vector<struct Branch<struct Edge> *> *query_res;
             
@@ -176,7 +180,8 @@ struct PhysicsSolver{
             float direction[2] = {this->vel[i].x * this->r / vel_size, this->vel[i].y * this->r / vel_size};
             
             // preparing query
-            sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time;
+            sf::Vector2f dir(direction[0], direction[1]);
+            sf::Vector2f old_pos = this->pos[i], new_pos = this->pos[i] + this->vel[i] * this->delta_time + dir;
             float points[2][2] = {{old_pos.x, old_pos.y}, {new_pos.x,new_pos.y}};
 
             float bb[2][2];
@@ -190,17 +195,20 @@ struct PhysicsSolver{
             this->pos[i] += this->vel[i] * this->delta_time;
             for(auto b : *query_res){
                 e = b->data;
-                if(intersection(points[0], points[1], (float*)e.points[0], (float*)e.points[1], intersect)){
+                if(intersection(points[0], points[1], e.points[0], e.points[1], intersect)){
                     this->pos[i] = sf::Vector2f(intersect[0] - direction[0], intersect[1] - direction[1]);
                     float vx = this->vel[i].x, vy = this->vel[i].y;
                     this->vel[i].x = collision_damping * (vx * e.mat[0][0] + vy * e.mat[0][1]);
                     this->vel[i].y = collision_damping * (vx * e.mat[1][0] + vy * e.mat[1][1]);
+                    changed = true;
                     break;
                 }
             }
             
             delete query_res;
         }
+
+        return changed;
     }
 
     void destroy(){
